@@ -21,6 +21,22 @@ horn-score score --beam demo/demo_beam_modes.npz --default-protocol
 Both the demo and built-in default are synthetic; their scores are **not**
 scientific beam rankings.
 
+With local RHINO data, run either comparison:
+
+```bash
+python3 examples/rhino_wet_dry.py --cst-root /path/to/CST_beams \
+  --output rhino-synthetic.json
+python3 examples/rhino_survey_replay.py --study-root /path/to/limTOD/studies \
+  --output rhino-survey-replay.json
+```
+
+The first scores normalized CST beam **shapes** under the synthetic default;
+directivity cannot supply accepted-power efficiency, and the horn's azimuth
+mapping must be checked. The second reads limTOD's saved RHINO skies, one-year
+Jodrell Bank visits and matched beam factor. Both output fitted fixed-template
+spectra. The replay is a deterministic diagnostic; the survey's Bayesian
+21cmVAE fits assess actual recovery under its assumptions.
+
 ## Use your beam
 
 The beam NPZ needs `freqs_mhz`, `nside`, `lmax`, and `full_alm` with shape
