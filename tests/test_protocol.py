@@ -1,11 +1,16 @@
 import numpy as np
 import pytest
 
-from horn_design_score import Protocol
+from horn_design_score import BeamModes, Protocol
 
 
 def test_default_protocol_fixes_design_setup_and_roundtrips(tmp_path):
-    freqs = np.arange(55., 121.)
+    freqs = np.arange(60., 90., 2.)
+    beam_path = tmp_path / "beam.npz"
+    np.savez(beam_path, freqs_mhz=freqs,
+             full_alm=np.full((freqs.size, 1), np.sqrt(4 * np.pi) / 2),
+             nside=1, lmax=0)
+    beam = BeamModes.load_npz(beam_path)
     skies = {
         "cnn_pl_gleam": np.full((freqs.size, 12), 1500.),
         "gsm2008_gleam": np.full((freqs.size, 12), 1600.),
@@ -13,9 +18,9 @@ def test_default_protocol_fixes_design_setup_and_roundtrips(tmp_path):
     signal = -0.1 * np.exp(-0.5 * ((freqs - 75.) / 10.)**2)
     visits = np.full(360, 180.)
 
-    protocol = Protocol.default(skies, signal, visits)
-    assert protocol.protocol_id == "jbo-default-v1"
-    np.testing.assert_array_equal(protocol.freqs_mhz, freqs)
+    protocol = Protocol.default(beam, skies, signal, visits)
+    assert protocol.protocol_id == "jbo-default-v2"
+    np.testing.assert_array_equal(protocol.freqs_mhz, beam.freqs_mhz)
     assert set(protocol.sky_maps_k) == set(skies)
     assert protocol.latitude_deg == 53.23625
     assert protocol.receiver_k == 100.
@@ -28,11 +33,26 @@ def test_default_protocol_fixes_design_setup_and_roundtrips(tmp_path):
     protocol.save_npz(path)
     assert Protocol.load_npz(path).fingerprint == protocol.fingerprint
 
-    with pytest.raises(ValueError, match="jbo-default-v1"):
-        Protocol.default({"other": skies["cnn_pl_gleam"]}, signal, visits)
-    with pytest.raises(ValueError, match="jbo-default-v1"):
-        Protocol(freqs, skies, signal, visits, protocol_id="jbo-default-v1",
+    with pytest.raises(ValueError, match="jbo-default-v2"):
+        Protocol.default(beam, {"other": skies["cnn_pl_gleam"]}, signal, visits)
+    with pytest.raises(ValueError, match="jbo-default-v2"):
+        Protocol(freqs, skies, signal, visits, protocol_id="jbo-default-v2",
                  receiver_k=75.)
+    with pytest.raises(ValueError, match="one finite value per channel"):
+        Protocol.default(beam, skies, signal[:-1], visits)
+
+
+def test_old_default_protocol_remains_loadable(tmp_path):
+    freqs = np.arange(55., 121.)
+    skies = {
+        "cnn_pl_gleam": np.full((freqs.size, 12), 1500.),
+        "gsm2008_gleam": np.full((freqs.size, 12), 1600.),
+    }
+    old = Protocol(freqs, skies, np.zeros(freqs.size), np.full(360, 180.),
+                   protocol_id="jbo-default-v1")
+    path = tmp_path / "old-default.npz"
+    old.save_npz(path)
+    assert Protocol.load_npz(path).fingerprint == old.fingerprint
 
 
 def test_protocol_npz_roundtrip_preserves_observing_settings(analytic_inputs, tmp_path):

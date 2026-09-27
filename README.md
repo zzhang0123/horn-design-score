@@ -29,19 +29,22 @@ efficiency between 0 and 1. If starting from θ/φ power gains in dBi, convert
 their *linear* gains to Stokes I before calculating alms; the optional
 `beam_modes_from_grid` helper does this for a regular angular grid.
 
-The protocol NPZ needs `freqs_mhz`, `signal_k`, `visits` (360 positive LST-bin
-counts), and at least one `sky_<name>` equatorial HEALPix RING map cube in K
-with shape `(frequency, pixel)`. Frequencies and nside must match the beam.
-`Protocol.default(...)` fixes the Jodrell Bank zenith setup: 55–120 MHz in
-1 MHz channels, full 360-bin LST coverage, 240 s per visit, a 100 K receiver,
-300 K ground/loss, and a fifth-order foreground fit. Supply both foreground
-sky cubes, a smooth 21 cm template, and the 2025 night-time visit counts:
+The protocol NPZ stores a copy of the beam's `freqs_mhz` for matching, plus
+`signal_k`, `visits` (360 positive LST-bin counts), and at least one
+`sky_<name>` equatorial HEALPix RING map cube in K with shape
+`(frequency, pixel)`. Frequencies and nside must match the beam.
+The beam file sets the frequency grid. `Protocol.default(beam, ...)` copies
+that grid and fixes the Jodrell Bank zenith setup: full 360-bin LST coverage,
+240 s per visit, 1 MHz channel bandwidth, a 100 K receiver, 300 K ground/loss,
+and a fifth-order foreground fit. Supply both foreground sky cubes, a smooth
+21 cm template, and the 2025 night-time visit counts on the beam's channels:
 
 ```python
-from horn_design_score import Protocol
+from horn_design_score import BeamModes, Protocol
 
+beam = BeamModes.load_npz("beam.npz")
 protocol = Protocol.default(
-    {"cnn_pl_gleam": cnn_pl_cube_k, "gsm2008_gleam": gsm2008_cube_k},
+    beam, {"cnn_pl_gleam": cnn_pl_cube_k, "gsm2008_gleam": gsm2008_cube_k},
     signal_k, visits_2025,
 )
 protocol.save_npz("protocol.npz")
@@ -87,7 +90,8 @@ slower map rotation and `m=0` solve for a cross-check. See [DESIGN.md](DESIGN.md
 for the model and numerical conventions.
 
 The intended Jodrell Bank 2025 sky, visits and smoothed 21 cm template are
-**not bundled**. Freeze and archive those inputs before comparing designs.
-`--require-reference-band` checks only the 55–120 MHz grid; it does not verify
-the sky or signal. The current model omits polarized leakage, ionosphere,
+**not bundled**. Freeze and archive those inputs before comparing designs;
+all candidate beams must share the same frequency grid. The optional
+`--require-reference-band` check asks specifically for 55–120 MHz and is not
+part of the default. The current model omits polarized leakage, ionosphere,
 calibration drift and manufacturing tolerances.

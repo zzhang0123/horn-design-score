@@ -11,4 +11,4 @@ from .reference import reference_score, reference_forward, reference_modes_forwa
 __all__ = ["BeamPattern", "BeamModes", "beam_modes_from_grid", "Protocol", "ZonalKernel",
            "HarmonicScorer", "FittedSpectrum", "ScoreResult", "score_beam", "reference_score", "reference_forward",
            "reference_modes_forward", "reference_modes_score"]
-__version__ = "0.2.0"
+__version__ = "0.3.0"

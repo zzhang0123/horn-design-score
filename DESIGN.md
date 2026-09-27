@@ -8,7 +8,7 @@ The installable package, synthetic demonstration, harmonic fast path, and indepe
 
 The upstream dependency is limTOD's `mmode-solver` branch. Its RHINO task T-006 motivates the use of the full-LST $d_0$ observable. An eight-hour LST arc can leak higher $m$ modes into a nominal monopole estimate; this package currently scores only complete LST coverage and makes no partial-arc leakage claim.
 
-## Fixed reference experiment
+## Default observing setup
 
 Every candidate in a ranking must use exactly the same protocol. Proposed reference settings are:
 
@@ -16,15 +16,15 @@ Every candidate in a ranking must use exactly the same protocol. Proposed refere
 | --- | --- |
 | Site and pointing | Jodrell Bank, latitude 53.23625°, longitude −2.30744°; zenith drift scan |
 | Visits | During 2025, 240 s samples while the Sun is below the horizon, accumulated into 360 one-degree LST bins; every bin must have positive coverage |
-| Frequency | 55–120 MHz, channel-averaged at 1 MHz |
+| Frequency | Channel centres come from the input beam file; use the same grid for every candidate and sample the sky and signal on that grid. The assumed channel bandwidth is 1 MHz. |
 | Foregrounds | Two equatorial sky cubes: CNN-PL + GLEAM and GSM2008 + GLEAM; freeze provenance, hashes, pixelization, and frequency interpolation |
 | Signal | One fixed, spectrally smooth, channel-averaged global 21 cm template $T_{21}(\nu)$, injected with amplitude $A=1$ |
 | Receiver and environment | One receiving port, unpolarized Stokes I, $T_{\rm rx}=100$ K, $T_{\rm ground}=T_{\rm loss}=300$ K, independent thermal noise in each 1 MHz channel |
 | Foreground fit | Positive log-polynomial $\exp[\sum_{k=0}^{5}a_k\ln^k(\nu/70\,\mathrm{MHz})]$, with one fixed order and fitting rule for all candidates |
 
-The 55–85 MHz sub-band alone gives weak signal–foreground separation in the motivating study. Extending a measured beam to 120 MHz needs validated chromatic beam data; the benchmark must not silently extrapolate it. A signal derived from 21cmVAE is suitable only after removing interpolation kinks. Sky interpolation artifacts and the adequacy of the foreground order must be checked with reference and achromatic beams before ranking candidates. Any correction or uncertainty model must be frozen for the whole benchmark, never tuned to an individual beam.
+The protocol records the beam's frequencies for alignment and reproducibility; it does not choose their range. The 55–85 MHz sub-band alone gives weak signal–foreground separation in the motivating study. A 55–120 MHz benchmark is appropriate only when the input beams, skies, and signal cover it; the benchmark must not silently extrapolate a measured beam. A signal derived from 21cmVAE is suitable only after removing interpolation kinks. Sky interpolation artifacts and the adequacy of the foreground order must be checked with reference and achromatic beams before ranking candidates. Any correction or uncertainty model must be frozen for the whole benchmark, never tuned to an individual beam.
 
-This idealized protocol excludes ionospheric variation, RFI, daily calibration drift, and polarized leakage. Changing site, band, visits, fitting model, or physical assumptions creates a new protocol version and a new ranking. An eight-hour arc or another site is a separate diagnostic experiment.
+This idealized protocol excludes ionospheric variation, RFI, daily calibration drift, and polarized leakage. A different beam frequency grid or input dataset has a different protocol fingerprint and must be ranked separately. Changing the observing or fitting assumptions requires a new preset version. An eight-hour arc or another site is a separate diagnostic experiment.
 
 ## Beam input and physical convention
 
