@@ -15,9 +15,11 @@ horn-score make-demo demo
 horn-score score --beam demo/demo_beam_modes.npz --protocol demo/demo_protocol.npz
 horn-score score --beam demo/demo_beam_modes.npz --protocol demo/demo_protocol.npz \
   --fitted-spectrum --output demo/score.json
+horn-score score --beam demo/demo_beam_modes.npz --default-protocol
 ```
 
-The demo is synthetic; its score is **not** a scientific beam ranking.
+Both the demo and built-in default are synthetic; their scores are **not**
+scientific beam rankings.
 
 ## Use your beam
 
@@ -33,28 +35,31 @@ The protocol NPZ stores a copy of the beam's `freqs_mhz` for matching, plus
 `signal_k`, `visits` (360 positive LST-bin counts), and at least one
 `sky_<name>` equatorial HEALPix RING map cube in K with shape
 `(frequency, pixel)`. Frequencies and nside must match the beam.
-The beam file sets the frequency grid. `Protocol.default(beam, ...)` copies
-that grid and fixes the Jodrell Bank zenith setup: full 360-bin LST coverage,
-240 s per visit, 1 MHz channel bandwidth, a 100 K receiver, 300 K ground/loss,
-and a fifth-order foreground fit. Supply both foreground sky cubes, a smooth
-21 cm template, and the 2025 night-time visit counts on the beam's channels:
+The beam file sets the frequency grid. `Protocol.default(beam)` builds a
+ready-to-score analytic benchmark on that grid:
 
 ```python
 from horn_design_score import BeamModes, Protocol
 
 beam = BeamModes.load_npz("beam.npz")
-protocol = Protocol.default(
-    beam, {"cnn_pl_gleam": cnn_pl_cube_k, "gsm2008_gleam": gsm2008_cube_k},
-    signal_k, visits_2025,
-)
+protocol = Protocol.default(beam)
 protocol.save_npz("protocol.npz")
 ```
 
-The package does not include or verify these reference arrays. For each sky,
-the foreground model fits the exponential of a fifth-order polynomial in
-log frequency, giving a smooth positive spectrum. The 21 cm model is the
-fixed `signal_k` spectrum, injected with unit amplitude; the optional spectrum
-output fits only that amplitude in a noiseless mock.
+The default foregrounds are two smooth **synthetic** equatorial skies with a
+bright strip, a bright region, and varying spectral index. The default 21 cm
+signal is a channel-averaged Gaussian absorption centred at 72 MHz, with
+140 mK depth and 10 MHz width (Gaussian sigma). The setup uses 180 uniform
+visits per LST bin, 240 s per visit, 1 MHz channel bandwidth, a 100 K receiver,
+300 K ground/loss, and a fifth-order foreground fit. These inputs are for
+design prototyping, not a validated scientific ranking.
+
+For a real study, pass your own sky cubes, signal and visits on the beam's
+frequency grid: `Protocol.default(beam, sky_maps_k, signal_k, visits)`.
+The package does not include the real CNN-PL/GLEAM or GSM2008/GLEAM maps.
+For each sky, the foreground fit is the exponential of a fifth-order
+polynomial in log frequency. The optional 21 cm spectrum fit estimates only
+the supplied template's amplitude in a noiseless mock.
 
 Reuse one protocol and scorer for many beams:
 
@@ -90,7 +95,7 @@ slower map rotation and `m=0` solve for a cross-check. See [DESIGN.md](DESIGN.md
 for the model and numerical conventions.
 
 The intended Jodrell Bank 2025 sky, visits and smoothed 21 cm template are
-**not bundled**. Freeze and archive those inputs before comparing designs;
+**not bundled**. Freeze and archive those inputs for scientific comparisons;
 all candidate beams must share the same frequency grid. The optional
 `--require-reference-band` check asks specifically for 55–120 MHz and is not
 part of the default. The current model omits polarized leakage, ionosphere,

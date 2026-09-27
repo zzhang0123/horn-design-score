@@ -62,9 +62,12 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     demo = sub.add_parser("make-demo", help="write small synthetic inputs, not a science protocol")
     demo.add_argument("directory", type=Path)
-    score = sub.add_parser("score", help="score one beam against a frozen protocol NPZ")
+    score = sub.add_parser("score", help="score one beam against a protocol")
     score.add_argument("--beam", required=True, type=Path)
-    score.add_argument("--protocol", required=True, type=Path)
+    protocol_source = score.add_mutually_exclusive_group(required=True)
+    protocol_source.add_argument("--protocol", type=Path, help="load a frozen protocol NPZ")
+    protocol_source.add_argument("--default-protocol", action="store_true",
+                                 help="generate the analytic foregrounds, signal and uniform visits")
     score.add_argument("--nside", type=int)
     score.add_argument("--kernel-cache", type=Path, help="reuse the one-time m=0 sky projection")
     score.add_argument("--reference", action="store_true", help="slow limTOD TOD and m-mode check")
@@ -82,7 +85,14 @@ def main(argv: list[str] | None = None) -> int:
     beam = BeamModes.load_npz(args.beam) if harmonic else BeamPattern.load_npz(str(args.beam))
     if harmonic and args.nside is not None and args.nside != beam.nside:
         parser.error("--nside must match the packed-alm beam nside")
-    protocol = Protocol.load_npz(args.protocol, require_reference_band=args.require_reference_band)
+    if args.default_protocol:
+        if not harmonic:
+            parser.error("--default-protocol requires a packed-alm beam with nside")
+        protocol = Protocol.default(beam)
+        if args.require_reference_band and not np.array_equal(beam.freqs_mhz, np.arange(55., 121.)):
+            parser.error("reference band requires 55..120 MHz at 1 MHz spacing")
+    else:
+        protocol = Protocol.load_npz(args.protocol, require_reference_band=args.require_reference_band)
     kernel = None
     if harmonic and not args.reference:
         if args.kernel_cache:
@@ -105,7 +115,8 @@ def main(argv: list[str] | None = None) -> int:
     if result.fitted_spectra is None:
         record.pop("fitted_spectra")
     record["provenance"] = {"beam_sha256": _sha256(args.beam),
-                            "protocol_sha256": _sha256(args.protocol),
+                            "protocol_sha256": _sha256(args.protocol) if args.protocol else None,
+                            "protocol_source": "analytic_default" if args.default_protocol else "npz",
                             "package_version": __version__,
                             "limtod_version": version("limTOD"),
                             "protocol_id": protocol.protocol_id,

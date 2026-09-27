@@ -8,7 +8,13 @@ The installable package, synthetic demonstration, harmonic fast path, and indepe
 
 The upstream dependency is limTOD's `mmode-solver` branch. Its RHINO task T-006 motivates the use of the full-LST $d_0$ observable. An eight-hour LST arc can leak higher $m$ modes into a nominal monopole estimate; this package currently scores only complete LST coverage and makes no partial-arc leakage claim.
 
-## Default observing setup
+## Built-in analytic benchmark
+
+`Protocol.default(beam)` now supplies all non-beam inputs needed for a reproducible design-search benchmark. It uses two deterministic equatorial HEALPix skies, `analytic_a` and `analytic_b`, with smooth bright structures and spatially varying power-law index and curvature. Their 70 MHz amplitudes and angular patterns are analytic; they are not CNN-PL, GSM2008, or GLEAM products. The signal is a channel-averaged Gaussian absorption with centre 72 MHz, depth −0.14 K, and standard deviation 10 MHz. The observing schedule uses 180 uniform 240 s visits per LST bin. The beam provides the channel centres and `nside`; the assumed channel bandwidth is 1 MHz.
+
+These analytic inputs allow immediate, repeatable scoring and software optimization. Their score does not establish a ranking under the real sky or actual 2025 visits. Passing frozen sky cubes, signal, and visits to `Protocol.default` replaces the generated inputs.
+
+## Proposed scientific reference setup
 
 Every candidate in a ranking must use exactly the same protocol. Proposed reference settings are:
 

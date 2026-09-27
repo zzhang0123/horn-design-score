@@ -19,6 +19,8 @@ class _BeamFrequencySource(TypingProtocol):
 
 _DEFAULT_ID = "jbo-default-v2"
 _DEFAULT_SKIES = frozenset({"cnn_pl_gleam", "gsm2008_gleam"})
+_ANALYTIC_ID = "analytic-default-v1"
+_ANALYTIC_SKIES = frozenset({"analytic_a", "analytic_b"})
 _DEFAULT_SETTINGS = {
     "latitude_deg": 53.23625,
     "receiver_k": 100.0,
@@ -90,6 +92,10 @@ class Protocol:
                 and (set(maps) != _DEFAULT_SKIES
                      or any(getattr(self, key) != value for key, value in _DEFAULT_SETTINGS.items()))):
             raise ValueError(f"{self.protocol_id} has inconsistent sky labels or observing settings")
+        if (self.protocol_id == _ANALYTIC_ID
+                and (set(maps) != _ANALYTIC_SKIES
+                     or any(getattr(self, key) != value for key, value in _DEFAULT_SETTINGS.items()))):
+            raise ValueError(f"{_ANALYTIC_ID} has inconsistent sky labels or observing settings")
         object.__setattr__(self, "freqs_mhz", f)
         object.__setattr__(self, "signal_k", signal)
         object.__setattr__(self, "visits", visits)
@@ -116,21 +122,45 @@ class Protocol:
         return hp.npix2nside(next(iter(self.sky_maps_k.values())).shape[1])
 
     @classmethod
-    def default(cls, beam: _BeamFrequencySource, sky_maps_k: dict[str, np.ndarray],
-                signal_k: np.ndarray, visits: np.ndarray) -> "Protocol":
-        """Jodrell Bank design setup on the input beam's frequency grid.
+    def default(cls, beam: _BeamFrequencySource,
+                sky_maps_k: dict[str, np.ndarray] | None = None,
+                signal_k: np.ndarray | None = None,
+                visits: np.ndarray | None = None) -> "Protocol":
+        """Analytic design benchmark on the input beam's frequency grid.
 
-        The two skies must be labelled cnn_pl_gleam and gsm2008_gleam.
-        Sky maps and signal must already be sampled on beam.freqs_mhz.
-        Their provenance and the 2025 night-time visits are not supplied or
-        authenticated by this package.
+        Without overrides, generate two reproducible analytic skies, a
+        Gaussian absorption template, and 180 visits per LST bin. These are
+        illustrative inputs, not the real Jodrell Bank 2025 reference data.
+        Caller-supplied arrays must be sampled on beam.freqs_mhz.
         """
         try:
             freqs_mhz = beam.freqs_mhz
         except AttributeError as exc:
             raise TypeError("beam must provide freqs_mhz") from exc
+        analytic_skies = sky_maps_k is None
+        analytic_signal = signal_k is None
+        if analytic_skies:
+            try:
+                nside = beam.nside
+            except AttributeError as exc:
+                raise TypeError("beam must provide nside to generate default foregrounds") from exc
+            from .defaults import default_foreground_scenarios
+            sky_maps_k = default_foreground_scenarios(
+                freqs_mhz, nside, _DEFAULT_SETTINGS["bandwidth_hz"]
+            )
+        if analytic_signal:
+            from .defaults import default_signal_k
+            signal_k = default_signal_k(freqs_mhz, _DEFAULT_SETTINGS["bandwidth_hz"])
+        if visits is None:
+            visits = np.full(360, 180.)
+        if analytic_skies and analytic_signal:
+            protocol_id = _ANALYTIC_ID
+        elif set(sky_maps_k) == _DEFAULT_SKIES and not analytic_signal:
+            protocol_id = _DEFAULT_ID
+        else:
+            protocol_id = "custom-v1"
         return cls(freqs_mhz, sky_maps_k, signal_k, visits,
-                   **_DEFAULT_SETTINGS, protocol_id=_DEFAULT_ID)
+                   **_DEFAULT_SETTINGS, protocol_id=protocol_id)
 
     def save_npz(self, path: str | Path) -> None:
         """Save all arrays and observing settings needed to reproduce a score."""

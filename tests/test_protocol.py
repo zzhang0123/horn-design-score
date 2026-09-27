@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from horn_design_score import BeamModes, Protocol
+from horn_design_score import (BeamModes, Protocol, default_foreground_scenarios,
+                               default_signal_k)
 
 
 def test_default_protocol_fixes_design_setup_and_roundtrips(tmp_path):
@@ -33,13 +34,42 @@ def test_default_protocol_fixes_design_setup_and_roundtrips(tmp_path):
     protocol.save_npz(path)
     assert Protocol.load_npz(path).fingerprint == protocol.fingerprint
 
-    with pytest.raises(ValueError, match="jbo-default-v2"):
-        Protocol.default(beam, {"other": skies["cnn_pl_gleam"]}, signal, visits)
+    custom = Protocol.default(beam, {"other": skies["cnn_pl_gleam"]}, signal, visits)
+    assert custom.protocol_id == "custom-v1"
     with pytest.raises(ValueError, match="jbo-default-v2"):
         Protocol(freqs, skies, signal, visits, protocol_id="jbo-default-v2",
                  receiver_k=75.)
     with pytest.raises(ValueError, match="one finite value per channel"):
         Protocol.default(beam, skies, signal[:-1], visits)
+
+
+def test_bundled_analytic_inputs_follow_beam_grid_and_are_reproducible(tmp_path):
+    freqs = np.arange(60., 90., 2.)
+    beam = BeamModes(freqs, np.full((freqs.size, 1), np.sqrt(4 * np.pi) / 2),
+                     nside=4, lmax=0)
+    first = Protocol.default(beam)
+    second = Protocol.default(beam)
+
+    assert first.protocol_id == "analytic-default-v1"
+    assert first.fingerprint == second.fingerprint
+    assert set(first.sky_maps_k) == {"analytic_a", "analytic_b"}
+    np.testing.assert_array_equal(first.freqs_mhz, beam.freqs_mhz)
+    np.testing.assert_array_equal(first.visits, np.full(360, 180.))
+    np.testing.assert_allclose(first.signal_k, default_signal_k(freqs))
+    assert first.signal_k[6] < -0.139
+    assert np.all(first.signal_k < 0)
+    for sky in first.sky_maps_k.values():
+        assert sky.shape == (freqs.size, 12 * beam.nside**2)
+        assert np.all(np.isfinite(sky))
+        assert np.all(sky > 0)
+        assert np.ptp(sky[6]) > 100
+    assert not np.array_equal(first.sky_maps_k["analytic_a"], first.sky_maps_k["analytic_b"])
+
+    path = tmp_path / "analytic-default.npz"
+    first.save_npz(path)
+    assert Protocol.load_npz(path).fingerprint == first.fingerprint
+    with pytest.raises(ValueError, match="channel centres"):
+        default_foreground_scenarios(np.array([0.4, 1.0]), beam.nside)
 
 
 def test_old_default_protocol_remains_loadable(tmp_path):
