@@ -1,4 +1,0 @@
-interface:
-  display_name: "Task Handoff"
-  short_description: "Share versioned task context across local coding agents"
-  default_prompt: "Use task-handoff to read the current task state, verify the worktree, and continue or checkpoint the task."

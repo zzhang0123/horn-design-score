@@ -1,6 +1,11 @@
 
-# Local agent handoffs and installation backups
-/.agent-state/
+# Local agent instructions, skills, and handoff state
+AGENTS.md
+CLAUDE.md
+.agents/
+.claude/
+.codex/
+.agent-state/
 __pycache__/
 .pytest_cache/
 /build/
