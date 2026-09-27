@@ -12,6 +12,20 @@ import healpy as hp
 import numpy as np
 
 
+_DEFAULT_ID = "jbo-default-v1"
+_DEFAULT_SKIES = frozenset({"cnn_pl_gleam", "gsm2008_gleam"})
+_DEFAULT_FREQS_MHZ = np.arange(55., 121.)
+_DEFAULT_SETTINGS = {
+    "latitude_deg": 53.23625,
+    "receiver_k": 100.0,
+    "ground_k": 300.0,
+    "loss_k": 300.0,
+    "integration_s": 240.0,
+    "bandwidth_hz": 1e6,
+    "foreground_order": 5,
+}
+
+
 @dataclass(frozen=True, eq=False)
 class Protocol:
     freqs_mhz: np.ndarray
@@ -66,6 +80,11 @@ class Protocol:
             maps[name] = a
         if self.protocol_id == "jbo-band-only-v1" and not np.array_equal(f, np.arange(55., 121.)):
             raise ValueError("jbo-band-only-v1 requires 55..120 MHz at 1 MHz spacing")
+        if self.protocol_id == _DEFAULT_ID:
+            if (not np.array_equal(f, _DEFAULT_FREQS_MHZ)
+                    or set(maps) != _DEFAULT_SKIES
+                    or any(getattr(self, key) != value for key, value in _DEFAULT_SETTINGS.items())):
+                raise ValueError("jbo-default-v1 requires the fixed band, sky labels and observing settings")
         object.__setattr__(self, "freqs_mhz", f)
         object.__setattr__(self, "signal_k", signal)
         object.__setattr__(self, "visits", visits)
@@ -90,6 +109,18 @@ class Protocol:
     @property
     def sky_nside(self) -> int:
         return hp.npix2nside(next(iter(self.sky_maps_k.values())).shape[1])
+
+    @classmethod
+    def default(cls, sky_maps_k: dict[str, np.ndarray], signal_k: np.ndarray,
+                visits: np.ndarray) -> "Protocol":
+        """Fixed Jodrell Bank design setup with caller-supplied reference arrays.
+
+        The two skies must be labelled cnn_pl_gleam and gsm2008_gleam.
+        Their provenance, the signal and the 2025 night-time visits are not
+        supplied or authenticated by this package.
+        """
+        return cls(_DEFAULT_FREQS_MHZ, sky_maps_k, signal_k, visits,
+                   **_DEFAULT_SETTINGS, protocol_id=_DEFAULT_ID)
 
     def save_npz(self, path: str | Path) -> None:
         """Save all arrays and observing settings needed to reproduce a score."""

@@ -4,6 +4,37 @@ import pytest
 from horn_design_score import Protocol
 
 
+def test_default_protocol_fixes_design_setup_and_roundtrips(tmp_path):
+    freqs = np.arange(55., 121.)
+    skies = {
+        "cnn_pl_gleam": np.full((freqs.size, 12), 1500.),
+        "gsm2008_gleam": np.full((freqs.size, 12), 1600.),
+    }
+    signal = -0.1 * np.exp(-0.5 * ((freqs - 75.) / 10.)**2)
+    visits = np.full(360, 180.)
+
+    protocol = Protocol.default(skies, signal, visits)
+    assert protocol.protocol_id == "jbo-default-v1"
+    np.testing.assert_array_equal(protocol.freqs_mhz, freqs)
+    assert set(protocol.sky_maps_k) == set(skies)
+    assert protocol.latitude_deg == 53.23625
+    assert protocol.receiver_k == 100.
+    assert protocol.ground_k == protocol.loss_k == 300.
+    assert protocol.integration_s == 240.
+    assert protocol.bandwidth_hz == 1e6
+    assert protocol.foreground_order == 5
+
+    path = tmp_path / "default.npz"
+    protocol.save_npz(path)
+    assert Protocol.load_npz(path).fingerprint == protocol.fingerprint
+
+    with pytest.raises(ValueError, match="jbo-default-v1"):
+        Protocol.default({"other": skies["cnn_pl_gleam"]}, signal, visits)
+    with pytest.raises(ValueError, match="jbo-default-v1"):
+        Protocol(freqs, skies, signal, visits, protocol_id="jbo-default-v1",
+                 receiver_k=75.)
+
+
 def test_protocol_npz_roundtrip_preserves_observing_settings(analytic_inputs, tmp_path):
     _, base = analytic_inputs
     protocol = Protocol(

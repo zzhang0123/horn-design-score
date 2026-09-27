@@ -32,8 +32,28 @@ their *linear* gains to Stokes I before calculating alms; the optional
 The protocol NPZ needs `freqs_mhz`, `signal_k`, `visits` (360 positive LST-bin
 counts), and at least one `sky_<name>` equatorial HEALPix RING map cube in K
 with shape `(frequency, pixel)`. Frequencies and nside must match the beam.
-`Protocol.save_npz()` also preserves optional site, noise and foreground-fit
-settings. Reuse one protocol and scorer for many beams:
+`Protocol.default(...)` fixes the Jodrell Bank zenith setup: 55–120 MHz in
+1 MHz channels, full 360-bin LST coverage, 240 s per visit, a 100 K receiver,
+300 K ground/loss, and a fifth-order foreground fit. Supply both foreground
+sky cubes, a smooth 21 cm template, and the 2025 night-time visit counts:
+
+```python
+from horn_design_score import Protocol
+
+protocol = Protocol.default(
+    {"cnn_pl_gleam": cnn_pl_cube_k, "gsm2008_gleam": gsm2008_cube_k},
+    signal_k, visits_2025,
+)
+protocol.save_npz("protocol.npz")
+```
+
+The package does not include or verify these reference arrays. For each sky,
+the foreground model fits the exponential of a fifth-order polynomial in
+log frequency, giving a smooth positive spectrum. The 21 cm model is the
+fixed `signal_k` spectrum, injected with unit amplitude; the optional spectrum
+output fits only that amplitude in a noiseless mock.
+
+Reuse one protocol and scorer for many beams:
 
 ```python
 from horn_design_score import BeamModes, HarmonicScorer, Protocol
