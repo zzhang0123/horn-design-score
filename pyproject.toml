@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "horn-design-score"
+version = "0.2.0"
+description = "Fast, traceable global 21 cm drift-scan beam design score"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "scipy>=1.10", "healpy>=1.16", "limTOD>=1.10"]
+
+[project.urls]
+Repository = "https://github.com/zzhang0123/horn-design-score"
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+horn-score = "horn_design_score.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

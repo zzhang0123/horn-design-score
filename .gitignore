@@ -1,0 +1,8 @@
+
+# Local agent handoffs and installation backups
+/.agent-state/
+__pycache__/
+.pytest_cache/
+/build/
+/dist/
+/src/*.egg-info/
