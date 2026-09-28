@@ -79,6 +79,19 @@ def main() -> None:
     site_cache = year / "cache"
     tod_path = site_cache / "tod_jbo.npz"
     weights_path = site_cache / "weights_jbo_0.npy"
+    sky_paths = {
+        component: sky_cache / f"sky_{component}_eq_n64_g256_55-85x31.npy"
+        for component in {c for parts in SKIES.values() for c in parts}
+    }
+    required = [first / "config.py", first / "signal21.py", tod_path,
+                weights_path, *sky_paths.values()]
+    missing = [path for path in required if not path.is_file()]
+    if missing:
+        parser.error(
+            "limTOD's RHINO study source and generated caches are not included "
+            "in its Git checkout; this local replay requires them. Missing: "
+            + ", ".join(str(path) for path in missing)
+        )
     freqs = np.arange(55.0, 86.0)
     input_paths = [tod_path, weights_path]
     sys.path.insert(0, str(first))
@@ -89,8 +102,7 @@ def main() -> None:
     if weights.shape != (360,) or np.any(weights <= 0):
         raise ValueError("expected 360 positive Jodrell Bank LST-bin visit counts")
     sky_means = {}
-    for component in {c for parts in SKIES.values() for c in parts}:
-        path = sky_cache / f"sky_{component}_eq_n64_g256_55-85x31.npy"
+    for component, path in sky_paths.items():
         cube = np.load(path, mmap_mode="r")
         if cube.shape != (31, 49152):
             raise ValueError(f"unexpected sky cube shape: {path}")

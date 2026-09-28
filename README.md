@@ -6,36 +6,36 @@ better), with an optional fitted 21 cm template spectrum.
 
 ## Try it
 
-Install the local limTOD `mmode-solver` checkout first, then this package:
+From an empty directory with Python 3.10+:
 
 ```bash
-python3 -m pip install -e /path/to/limTOD
-python3 -m pip install -e .
+git clone --branch mmode-solver https://github.com/zzhang0123/limTOD.git
+git clone https://github.com/zzhang0123/horn-design-score.git
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e ./limTOD
+python -m pip install -e ./horn-design-score
 horn-score make-demo demo
-horn-score score --beam demo/demo_beam_modes.npz --protocol demo/demo_protocol.npz
-horn-score score --beam demo/demo_beam_modes.npz --protocol demo/demo_protocol.npz \
+horn-score score --beam demo/demo_beam_modes.npz --default-protocol \
   --fitted-spectrum --output demo/score.json
-horn-score score --beam demo/demo_beam_modes.npz --default-protocol
 ```
 
-Both the demo and built-in default are synthetic; their scores are **not**
-scientific beam rankings.
+Open `demo/score.json` for the score and fitted template spectra. The demo and
+built-in default need no external beam or sky data; both are **synthetic**, so
+their scores are not scientific beam rankings.
 
-With local RHINO data, run either comparison:
+If you have RHINO CST exports in `HornDryGround/` and `HornWetGround/`, run the
+optional shape comparison from the same directory:
 
 ```bash
-python3 examples/rhino_wet_dry.py --cst-root /path/to/CST_beams \
+python horn-design-score/examples/rhino_wet_dry.py --cst-root /path/to/CST_beams \
   --output rhino-synthetic.json
-python3 examples/rhino_survey_replay.py --study-root /path/to/limTOD/studies \
-  --output rhino-survey-replay.json
 ```
 
-The first scores normalized CST beam **shapes** under the synthetic default;
-directivity cannot supply accepted-power efficiency, and the horn's azimuth
-mapping must be checked. The second reads limTOD's saved RHINO skies, one-year
-Jodrell Bank visits and matched beam factor. Both output fitted fixed-template
-spectra. The replay is a deterministic diagnostic; the survey's Bayesian
-21cmVAE fits assess actual recovery under its assumptions.
+The CST data are not bundled. This scores normalized beam **shapes** under the
+synthetic default; directivity does not supply accepted-power efficiency. The
+historical survey replay requires limTOD study caches and 21cmVAE inputs that
+are **not Git-tracked** in limTOD, so a public clone cannot reproduce it.
 
 ## Use your beam
 
