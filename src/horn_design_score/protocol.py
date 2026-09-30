@@ -17,9 +17,9 @@ class _BeamFrequencySource(TypingProtocol):
     freqs_mhz: np.ndarray
 
 
-_DEFAULT_ID = "jbo-default-v2"
+_DEFAULT_ID = "jbo-default-v3"
 _DEFAULT_SKIES = frozenset({"cnn_pl_gleam", "gsm2008_gleam"})
-_ANALYTIC_ID = "analytic-default-v1"
+_ANALYTIC_ID = "analytic-default-v2"
 _ANALYTIC_SKIES = frozenset({"analytic_a", "analytic_b"})
 _DEFAULT_SETTINGS = {
     "latitude_deg": 53.23625,
@@ -46,6 +46,7 @@ class Protocol:
     bandwidth_hz: float = 1e6
     foreground_order: int = 5
     protocol_id: str = "custom-v1"
+    foreground_model: str = "matched_beam_factor"
     _fingerprint: str = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -69,6 +70,8 @@ class Protocol:
             raise ValueError("invalid integration, bandwidth or foreground order")
         if not isinstance(self.protocol_id, str) or not self.protocol_id:
             raise ValueError("protocol_id must be a nonempty string")
+        if self.foreground_model not in ("matched_beam_factor", "plain_log_polynomial"):
+            raise ValueError("foreground_model must be matched_beam_factor or plain_log_polynomial")
         if len(self.sky_maps_k) < 1:
             raise ValueError("at least one foreground sky is required")
         maps: dict[str, np.ndarray] = {}
@@ -88,14 +91,17 @@ class Protocol:
             raise ValueError("jbo-band-only-v1 requires 55..120 MHz at 1 MHz spacing")
         if self.protocol_id == "jbo-default-v1" and not np.array_equal(f, np.arange(55., 121.)):
             raise ValueError("jbo-default-v1 requires 55..120 MHz at 1 MHz spacing")
-        if (self.protocol_id in ("jbo-default-v1", _DEFAULT_ID)
+        if (self.protocol_id in ("jbo-default-v1", "jbo-default-v2", _DEFAULT_ID)
                 and (set(maps) != _DEFAULT_SKIES
                      or any(getattr(self, key) != value for key, value in _DEFAULT_SETTINGS.items()))):
             raise ValueError(f"{self.protocol_id} has inconsistent sky labels or observing settings")
-        if (self.protocol_id == _ANALYTIC_ID
+        if (self.protocol_id in ("analytic-default-v1", _ANALYTIC_ID)
                 and (set(maps) != _ANALYTIC_SKIES
                      or any(getattr(self, key) != value for key, value in _DEFAULT_SETTINGS.items()))):
             raise ValueError(f"{_ANALYTIC_ID} has inconsistent sky labels or observing settings")
+        if (self.protocol_id in (_DEFAULT_ID, _ANALYTIC_ID)
+                and self.foreground_model != "matched_beam_factor"):
+            raise ValueError(f"{self.protocol_id} requires matched_beam_factor")
         object.__setattr__(self, "freqs_mhz", f)
         object.__setattr__(self, "signal_k", signal)
         object.__setattr__(self, "visits", visits)
@@ -107,7 +113,8 @@ class Protocol:
             digest.update(name.encode())
             digest.update(np.ascontiguousarray(maps[name]).tobytes())
         settings = (self.latitude_deg, self.receiver_k, self.ground_k, self.loss_k,
-                    self.integration_s, self.bandwidth_hz, self.foreground_order, self.protocol_id)
+                    self.integration_s, self.bandwidth_hz, self.foreground_order,
+                    self.protocol_id, self.foreground_model)
         digest.update(json.dumps(settings).encode())
         object.__setattr__(self, "_fingerprint", digest.hexdigest())
         for a in (f, signal, visits, *maps.values()):
@@ -170,6 +177,7 @@ class Protocol:
             ground_k=self.ground_k, loss_k=self.loss_k,
             integration_s=self.integration_s, bandwidth_hz=self.bandwidth_hz,
             foreground_order=self.foreground_order, protocol_id=self.protocol_id,
+            foreground_model=self.foreground_model,
             **{f"sky_{name}": sky for name, sky in self.sky_maps_k.items()},
         )
 
@@ -188,4 +196,6 @@ class Protocol:
                 settings["foreground_order"] = int(data["foreground_order"])
             if "protocol_id" in data:
                 settings["protocol_id"] = str(data["protocol_id"])
+            settings["foreground_model"] = (str(data["foreground_model"])
+                                             if "foreground_model" in data else "plain_log_polynomial")
             return cls(freqs, skies, data["signal_k"], data["visits"], **settings)

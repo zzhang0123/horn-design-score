@@ -55,13 +55,22 @@ def _score_spectra(foreground: dict[str, np.ndarray], h: np.ndarray, eta: np.nda
         sigma = noise[name]
         if np.any(sigma <= 0) or not np.all(np.isfinite(sigma)) or np.any(fg <= 0):
             return ScoreResult(0., "invalid_forward_model", name, {}, noise_method)
+        if protocol.foreground_model == "matched_beam_factor":
+            # limTOD's matched C(nu) = d0_model / <T_model>. The protocol sky is
+            # both the mock truth and the model sky in this idealized benchmark.
+            monopole = protocol.sky_maps_k[name].mean(axis=1)
+            if np.any(monopole <= 0):
+                return ScoreResult(0., "invalid_foreground_model", name, {}, noise_method)
+            factor = fg / monopole
+        else:
+            factor = np.ones_like(fg)
         # Fit foreground only, before adding the 21 cm signal. A nonlinear fit
         # is needed: a log-space polynomial fit is not a Kelvin-space fit.
         try:
-            a0 = np.polynomial.polynomial.polyfit(x, np.log(fg), protocol.foreground_order)
+            a0 = np.polynomial.polynomial.polyfit(x, np.log(fg / factor), protocol.foreground_order)
             def model(a: np.ndarray) -> np.ndarray:
                 with np.errstate(over="raise", invalid="raise"):
-                    return np.exp(v @ a)
+                    return factor * np.exp(v @ a)
             opt = least_squares(lambda a: (fg - model(a)) / sigma, a0,
                                 jac=lambda a: -(model(a)[:, None] * v) / sigma[:, None],
                                 max_nfev=500, xtol=1e-12, ftol=1e-12, gtol=1e-12)

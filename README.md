@@ -73,9 +73,13 @@ design prototyping, not a validated scientific ranking.
 For a real study, pass your own sky cubes, signal and visits on the beam's
 frequency grid: `Protocol.default(beam, sky_maps_k, signal_k, visits)`.
 The package does not include the real CNN-PL/GLEAM or GSM2008/GLEAM maps.
-For each sky, the foreground fit is the exponential of a fifth-order
-polynomial in log frequency. The optional 21 cm spectrum fit estimates only
-the supplied template's amplitude in a noiseless mock.
+For each sky, the default foreground fit is $C(\nu)$ times the exponential
+of a fifth-order polynomial in log frequency. Here
+$C=d_{0,\mathrm{model}}/\langle T_{\mathrm{model}}\rangle$ uses the same beam
+and sky as the mock data (an optimistic matched-model benchmark). The optional
+21 cm spectrum fit estimates only the supplied template's amplitude in a
+noiseless mock.
+An old protocol NPZ without `foreground_model` keeps the earlier plain fit.
 
 Reuse one protocol and scorer for many beams:
 

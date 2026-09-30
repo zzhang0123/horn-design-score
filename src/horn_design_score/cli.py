@@ -52,7 +52,8 @@ def _demo(directory: Path) -> None:
     signal = -0.14 * np.exp(-0.5 * ((f - 72.) / 10.)**2)
     visits = np.full(360, 181.)
     np.savez(directory / "demo_protocol.npz", freqs_mhz=f, signal_k=signal,
-             visits=visits, sky_analytic_a=sky_a, sky_analytic_b=sky_b)
+             visits=visits, foreground_model="matched_beam_factor",
+             sky_analytic_a=sky_a, sky_analytic_b=sky_b)
     grid = BeamPattern.load_npz(str(directory / "demo_beam.npz"))
     beam_modes_from_grid(grid, nside=8).save_npz(directory / "demo_beam_modes.npz")
 
@@ -120,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
                             "package_version": __version__,
                             "limtod_version": version("limTOD"),
                             "protocol_id": protocol.protocol_id,
+                            "foreground_model": protocol.foreground_model,
                             "protocol_fingerprint": protocol.fingerprint,
                             "nside": protocol.sky_nside if args.nside is None else args.nside,
                             "lmax": beam.lmax if harmonic else None,

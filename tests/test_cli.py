@@ -21,6 +21,7 @@ def test_cli_scores_bundled_default_without_protocol_file(tmp_path):
     assert result["status"] == "ok"
     assert np.isfinite(result["value"])
     assert set(result["scenarios"]) == {"analytic_a", "analytic_b"}
-    assert result["provenance"]["protocol_id"] == "analytic-default-v1"
+    assert result["provenance"]["protocol_id"] == "analytic-default-v2"
+    assert result["provenance"]["foreground_model"] == "matched_beam_factor"
     assert result["provenance"]["protocol_source"] == "analytic_default"
     assert result["provenance"]["protocol_sha256"] is None

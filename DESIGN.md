@@ -26,7 +26,7 @@ Every candidate in a ranking must use exactly the same protocol. Proposed refere
 | Foregrounds | Two equatorial sky cubes: CNN-PL + GLEAM and GSM2008 + GLEAM; freeze provenance, hashes, pixelization, and frequency interpolation |
 | Signal | One fixed, spectrally smooth, channel-averaged global 21 cm template $T_{21}(\nu)$, injected with amplitude $A=1$ |
 | Receiver and environment | One receiving port, unpolarized Stokes I, $T_{\rm rx}=100$ K, $T_{\rm ground}=T_{\rm loss}=300$ K, independent thermal noise in each 1 MHz channel |
-| Foreground fit | Positive log-polynomial $\exp[\sum_{k=0}^{5}a_k\ln^k(\nu/70\,\mathrm{MHz})]$, with one fixed order and fitting rule for all candidates |
+| Foreground fit | Matched beam factor $C(\nu)=d_{0,\mathrm{model}}(\nu)/\langle T_{\mathrm{model}}(\nu)\rangle$ times a positive fifth-order log-polynomial, with one fixed fitting rule for all candidates |
 
 The protocol records the beam's frequencies for alignment and reproducibility; it does not choose their range. The 55–85 MHz sub-band alone gives weak signal–foreground separation in the motivating study. A 55–120 MHz benchmark is appropriate only when the input beams, skies, and signal cover it; the benchmark must not silently extrapolate a measured beam. A signal derived from 21cmVAE is suitable only after removing interpolation kinks. Sky interpolation artifacts and the adequacy of the foreground order must be checked with reference and achromatic beams before ranking candidates. Any correction or uncertainty model must be frozen for the whole benchmark, never tuned to an individual beam.
 
@@ -74,7 +74,7 @@ d_0(\nu)=\frac{1}{360}\sum_{b=1}^{360}T_b(\nu),\qquad
 
 The visit count $n_b$ may vary by bin, but every bin must have positive coverage. Partial coverage would require an explicit estimator, covariance, conditioning analysis, and higher-$m$ leakage treatment before it could be scored.
 
-For each frozen foreground sky $j$, let $f_j$ be its signal-free $d_0$ spectrum and $\hat f_j$ its fitted smooth foreground. Let $J_j$ be the foreground-model Jacobian, $W_j^{\mathsf T}W_j=C_j^{-1}$ the thermal-noise whitening, and $Q_j=\operatorname{orth}(W_jJ_j)$. After projecting out the locally fitted foreground tangent space, define
+For each frozen foreground sky $j$, let $f_j$ be its signal-free $d_0$ spectrum and $\hat f_j=C_{\mathrm{beam},j}\exp(Va_j)$ its fitted foreground, with $C_{\mathrm{beam},j}=d_{0,\mathrm{model},j}/\langle T_{\mathrm{model},j}\rangle$. The current synthetic benchmark uses the same sky in the forward model and beam-factor model, so this is an optimistic matched-model assumption. Let $J_j=\operatorname{diag}(\hat f_j)V$ be the foreground-model Jacobian, $W_j^{\mathsf T}W_j=N_j^{-1}$ the thermal-noise whitening, and $Q_j=\operatorname{orth}(W_jJ_j)$. After projecting out the locally fitted foreground tangent space, define
 
 \[
 \begin{aligned}
@@ -88,7 +88,7 @@ S_j&=\sqrt{I_j/(1+r_j^{\mathsf T}r_j)},\\
 \end{aligned}
 \]
 
-The minimum makes the design score conservative across the two predeclared skies. Higher is better. The score penalizes the *total* whitened foreground residual, while $b_j$ is a diagnostic for template-aligned bias. Invalid or unidentifiable candidates and failed foreground fits receive FOM 0 with an explicit status. The FOM is a design metric, not a calibrated detection significance, posterior probability, or guarantee of full signal-shape recovery.
+The minimum makes the design score conservative across the two predeclared skies. Higher is better. The score penalizes the *total* whitened foreground residual, while $b_j$ is a diagnostic for template-aligned bias. Because $C_{\mathrm{beam}}$ is derived from the same sky used to generate each mock, this score does not measure beam-factor error from an imperfect sky or beam model; a separate mismatched-model benchmark is needed for that. Invalid or unidentifiable candidates and failed foreground fits receive FOM 0 with an explicit status. The FOM is a design metric, not a calibrated detection significance, posterior probability, or guarantee of full signal-shape recovery.
 
 With `fit_spectrum=True`, the scorer also fits a positive smooth foreground plus one amplitude of the **fixed** $T_{21}$ template to noiseless mock data with injected $A=1$. It can return the intrinsic fitted spectrum $A_{\rm fit}T_{21}$, the antenna-convolved spectrum $h A_{\rm fit}T_{21}$, and fit residuals for each sky. This is neither a free-form spectrum reconstruction nor an analysis of observed data. An optional spectrum-fit failure is reported separately and does not alter the already computed design FOM.
 
