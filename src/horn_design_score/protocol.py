@@ -142,8 +142,7 @@ class Protocol:
     def bcf_reference_index(self) -> int:
         """Channel whose sky map is the beam-factor template.
 
-        The channel nearest 75 MHz, the lower one on a tie. It is a band
-        edge only when the whole band lies on one side of 75 MHz.
+        The channel nearest 75 MHz, the lower one on a tie.
         """
         return int(np.argmin(np.abs(self.freqs_mhz - _BCF_REFERENCE_MHZ)))
 

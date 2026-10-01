@@ -11,7 +11,7 @@ import numpy as np
 from .protocol import Protocol
 
 # Allowance for quadrature error in an efficiency or sky partition.
-_QUADRATURE_TOLERANCE = 1e-3
+QUADRATURE_TOLERANCE = 1e-3
 _ROOT_4PI = np.sqrt(4 * np.pi)
 
 
@@ -73,9 +73,15 @@ class BeamModes:
                 raise ValueError("sky_alm must match full_alm shape and be finite")
             if eta.shape != f.shape or h.shape != f.shape or np.any(~np.isfinite(eta)) or np.any(~np.isfinite(h)):
                 raise ValueError("eta_rad and h_partition must have one finite value per channel")
-            if np.any(eta <= 0) or np.any(h < 0) or np.any(h > eta + _QUADRATURE_TOLERANCE):
+            if (not np.allclose(eta, a[:, 0].real / _ROOT_4PI, rtol=1e-9, atol=1e-12)
+                    or not np.allclose(h, sky[:, 0].real / _ROOT_4PI, rtol=1e-9, atol=1e-12)):
+                raise ValueError(
+                    "eta_rad and h_partition must equal a00/sqrt(4 pi) of full_alm and sky_alm; "
+                    "arrays prepared by version 0.6.0 or earlier stored pixel means, so build "
+                    "the beam from full_alm alone and call prepare() again")
+            if np.any(eta <= 0) or np.any(h < 0) or np.any(h > eta + QUADRATURE_TOLERANCE):
                 raise BeamEfficiencyError("invalid beam efficiency or sky partition")
-            if self.convention == "accepted_power" and np.any(eta > 1 + _QUADRATURE_TOLERANCE):
+            if self.convention == "accepted_power" and np.any(eta > 1 + QUADRATURE_TOLERANCE):
                 raise BeamEfficiencyError("accepted-power efficiency exceeds unity")
             if self.convention == "shape_only" and not np.allclose(eta, 1., atol=1e-6):
                 raise BeamEfficiencyError("shape_only prepared modes require unit efficiency")
@@ -132,7 +138,7 @@ class BeamModes:
                 eta = np.ones_like(eta)
             else:
                 self_full = self.full_alm
-                if np.any(eta <= 0) or np.any(eta > 1 + _QUADRATURE_TOLERANCE):
+                if np.any(eta <= 0) or np.any(eta > 1 + QUADRATURE_TOLERANCE):
                     raise BeamEfficiencyError("accepted-power beam efficiency outside (0, 1.001]")
             h = masked[:, 0].real / _ROOT_4PI
         from limTOD.simulator import zyz_of_pointing

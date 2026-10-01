@@ -14,7 +14,7 @@ import numpy as np
 
 from .modes import BeamEfficiencyError, BeamModes
 from .protocol import Protocol
-from .score import ScoreResult, _score_spectra, edges_beam_factor
+from .score import ScoreResult, _score_spectra, _throughput_failure, edges_beam_factor
 
 
 @dataclass(eq=False)
@@ -105,8 +105,9 @@ class HarmonicScorer:
         except BeamEfficiencyError as exc:
             return ScoreResult(0., "invalid_efficiency", str(exc), {}, "per_bin_tsys_mmodes")
         foreground, noise, throughput, eta = self._spectra(b)
-        if np.any(throughput <= 0):
-            return ScoreResult(0., "invalid_sky_throughput", "masked harmonic beam has nonpositive response", {}, "per_bin_tsys_mmodes")
+        failure = _throughput_failure(throughput, eta, self.protocol, "per_bin_tsys_mmodes")
+        if failure is not None:
+            return failure
         return _score_spectra(foreground, throughput, eta, noise,
                               self.protocol, "per_bin_tsys_mmodes",
                               reference_d0=self._reference_d0(b),

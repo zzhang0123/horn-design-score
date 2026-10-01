@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import healpy as hp
 import numpy as np
 
 from .beam import BeamPattern
 from .modes import BeamEfficiencyError, BeamModes
 from .kernel import ZonalKernel, foreground_fast, ground_loss_fast
 from .protocol import Protocol
-from .score import ScoreResult, _score_spectra
+from .score import ScoreResult, _score_spectra, _throughput_failure
 
 
 def reference_forward(beam: BeamPattern, protocol: Protocol,
@@ -127,33 +126,30 @@ def _modes_spectra(b: BeamModes, protocol: Protocol, channel_indices: np.ndarray
     lst = np.arange(360, dtype=float) + 0.5
     window = mmode.LSTWindow(lst)
     eta = b.eta_rad[indices]
+    reference_channel = protocol.bcf_reference_index
+    shape = (360, indices.size)
+    ones_tod = np.empty(shape)
+    sky_tod = {name: np.empty(shape) for name in protocol.sky_maps_k}
+    template_tod = {name: np.empty(shape) for name in protocol.sky_maps_k}
+    for j, i in enumerate(indices):
+        for k, angle in enumerate(lst):
+            pointed = pointing_beam_in_eq_sys(
+                b.sky_alm[i], angle, protocol.latitude_deg, 0., 90., 0.,
+                b.nside, normalize=False, truncate_frac_thres=0.)
+            ones_tod[k, j] = pointed.mean()
+            for name, sky in protocol.sky_maps_k.items():
+                sky_tod[name][k, j] = np.mean(pointed * sky[i])
+                template_tod[name][k, j] = np.mean(pointed * sky[reference_channel])
+    throughput = ones_tod.mean(axis=0)
+    ground_loss = (eta - throughput) * protocol.ground_k + (1 - eta) * protocol.loss_k
     foreground: dict[str, np.ndarray] = {}
     noise: dict[str, np.ndarray] = {}
     reference: dict[str, np.ndarray] = {}
-    throughput: np.ndarray | None = None
-    ground_loss = np.zeros(indices.size)
-    for name, sky in protocol.sky_maps_k.items():
-        template = sky[protocol.bcf_reference_index]
-        sky_tod = np.empty((360, indices.size))
-        template_tod = np.empty_like(sky_tod)
-        ones_tod = np.empty_like(sky_tod)
-        for j, i in enumerate(indices):
-            for k, angle in enumerate(lst):
-                pointed = pointing_beam_in_eq_sys(
-                    b.sky_alm[i], angle, protocol.latitude_deg, 0., 90., 0.,
-                    b.nside, normalize=False, truncate_frac_thres=0.)
-                ones_tod[k, j] = pointed.mean()
-                sky_tod[k, j] = np.mean(pointed * sky[i])
-                template_tod[k, j] = np.mean(pointed * template)
-        if throughput is None:
-            # The pointed maps do not depend on the sky, so the first one
-            # fixes the throughput and with it the ground and loss term.
-            throughput = ones_tod.mean(axis=0)
-            ground_loss = (eta - throughput) * protocol.ground_k + (1 - eta) * protocol.loss_k
-        tod = sky_tod + ground_loss[None, :]
+    for name in protocol.sky_maps_k:
+        tod = sky_tod[name] + ground_loss[None, :]
         d0 = mmode.solve(tod, window, m_trunc=0).d0
         foreground[name] = d0
-        reference[name] = template_tod.mean(axis=0)
+        reference[name] = template_tod[name].mean(axis=0)
         t_sys = tod + protocol.receiver_k
         noise[name] = np.sqrt(np.sum(t_sys**2 / protocol.visits[:, None], axis=0)) / (
             360 * np.sqrt(protocol.bandwidth_hz * protocol.integration_s))
@@ -169,6 +165,9 @@ def reference_modes_score(beam: BeamModes, protocol: Protocol,
     except BeamEfficiencyError as exc:
         return ScoreResult(0., "invalid_efficiency", str(exc), {}, "per_bin_tsys_limtod")
     foreground, noise, throughput, reference, ground_loss = _modes_spectra(b, protocol, None)
+    failure = _throughput_failure(throughput, b.eta_rad, protocol, "per_bin_tsys_limtod")
+    if failure is not None:
+        return failure
     return _score_spectra(foreground, throughput, b.eta_rad,
                           noise, protocol, "per_bin_tsys_limtod",
                           reference_d0=reference, additive_k=ground_loss,

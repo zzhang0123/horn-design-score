@@ -1,3 +1,9 @@
+import os
+
+# healpy's OpenMP transforms oversubscribe on many-core hosts at these map
+# sizes; one thread is several times faster. Set before healpy is imported.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
 import numpy as np
 import healpy as hp
 import pytest

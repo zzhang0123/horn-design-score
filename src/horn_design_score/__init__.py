@@ -13,4 +13,4 @@ __all__ = ["BeamPattern", "BeamEfficiencyError", "BeamModes", "beam_modes_from_g
            "default_foreground_scenarios", "default_signal_k", "ZonalKernel",
            "HarmonicScorer", "FittedSpectrum", "ScoreResult", "edges_beam_factor", "score_beam", "reference_score", "reference_forward",
            "reference_modes_forward", "reference_modes_score"]
-__version__ = "0.6.1"
+__version__ = "0.7.0"

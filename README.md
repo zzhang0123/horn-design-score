@@ -104,7 +104,9 @@ for name, fit in result.fitted_spectra.items():
 ```
 
 `prepare()` computes the horizon-weighted and reference-frame beam modes once;
-save them with `beam.save_npz()` to skip that work in later runs. Without
+save them with `beam.save_npz()` to skip that work in later runs. Prepared
+files written by version 0.6.0 or earlier are rejected at load; build the beam
+from `full_alm` and call `prepare()` again. Without
 `fit_spectrum=True` (CLI: `--fitted-spectrum`), no fitted spectra are returned.
 `intrinsic_k` is the fitted global template before beam attenuation;
 `antenna_k` includes the beam throughput. The fit uses a **noiseless mock with

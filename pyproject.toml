@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "horn-design-score"
-version = "0.6.1"
+version = "0.7.0"
 description = "Fast, traceable global 21 cm drift-scan beam design score"
 readme = "README.md"
 requires-python = ">=3.10"

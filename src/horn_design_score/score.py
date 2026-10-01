@@ -9,6 +9,7 @@ from scipy.optimize import least_squares
 
 from .beam import BeamPattern
 from .kernel import ZonalKernel, foreground_fast, ground_loss_fast, reference_d0_fast
+from .modes import QUADRATURE_TOLERANCE
 from .protocol import Protocol
 
 
@@ -40,6 +41,21 @@ class FittedSpectrum:
     detail: str = ""
     model_kind: str = "fixed_template_amplitude"
     data_kind: str = "noiseless_A1_injection"
+
+
+def _throughput_failure(throughput: np.ndarray, eta: np.ndarray, protocol: Protocol,
+                        noise_method: str) -> ScoreResult | None:
+    """Return the FOM-0 result for a sky throughput outside (0, eta + tolerance]."""
+    if np.any(throughput <= 0):
+        return ScoreResult(0., "invalid_sky_throughput",
+                           "beam has nonpositive response to a uniform sky", {}, noise_method)
+    excess = throughput - eta
+    worst = int(np.argmax(excess))
+    if excess[worst] > QUADRATURE_TOLERANCE:
+        detail = (f"sky throughput exceeds radiative efficiency by {excess[worst]:.2e} "
+                  f"at {protocol.freqs_mhz[worst]:g} MHz")
+        return ScoreResult(0., "invalid_efficiency", detail, {}, noise_method)
+    return None
 
 
 def edges_beam_factor(reference_d0: np.ndarray, protocol: Protocol) -> np.ndarray:
