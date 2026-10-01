@@ -73,12 +73,19 @@ design prototyping, not a validated scientific ranking.
 For a real study, pass your own sky cubes, signal and visits on the beam's
 frequency grid: `Protocol.default(beam, sky_maps_k, signal_k, visits)`.
 The package does not include the real CNN-PL/GLEAM or GSM2008/GLEAM maps.
-For each sky, the default foreground fit is $C(\nu)$ times the exponential
-of a fifth-order polynomial in log frequency. Here
-$C=d_{0,\mathrm{model}}/\langle T_{\mathrm{model}}\rangle$ uses the same beam
-and sky as the mock data (an optimistic matched-model benchmark). The optional
-21 cm spectrum fit estimates only the supplied template's amplitude in a
-noiseless mock.
+For each sky, the default foreground fit subtracts the ground and loss
+terms given by the beam, then fits $C(\nu)$ times the exponential of a
+fifth-order polynomial in log frequency. $C$ is the EDGES beam chromaticity
+factor: the beam at $\nu$ weighting the sky map of one reference channel,
+divided by the same quantity at the reference channel (the channel nearest
+75 MHz). It removes beam chromaticity for a sky with one spectrum; the part
+coupled to spatial variation of the sky spectrum stays in the residual and
+lowers the score. `HarmonicScorer.beam_factor(beam)` returns $C(\nu)$. The
+optional 21 cm spectrum fit estimates only the supplied template's amplitude
+in a noiseless mock.
+`Protocol(..., foreground_model="matched_beam_factor")` selects the earlier
+$C=d_{0,\mathrm{model}}/\langle T_{\mathrm{model}}\rangle$, which cancels the
+beam and gives the same residual for every candidate.
 An old protocol NPZ without `foreground_model` keeps the earlier plain fit.
 
 Reuse one protocol and scorer for many beams:
