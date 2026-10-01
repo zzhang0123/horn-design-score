@@ -142,8 +142,8 @@ class Protocol:
     def bcf_reference_index(self) -> int:
         """Channel whose sky map is the beam-factor template.
 
-        The channel nearest 75 MHz; the lower one on a tie, and a band edge
-        when the grid does not contain 75 MHz.
+        The channel nearest 75 MHz, the lower one on a tie. It is a band
+        edge only when the whole band lies on one side of 75 MHz.
         """
         return int(np.argmin(np.abs(self.freqs_mhz - _BCF_REFERENCE_MHZ)))
 
@@ -206,7 +206,11 @@ class Protocol:
 
     @classmethod
     def load_npz(cls, path: str | Path, *, require_reference_band: bool = False) -> "Protocol":
-        """Load a protocol without pickle; older array-only NPZs use defaults."""
+        """Load a protocol without pickle.
+
+        Settings missing from an older NPZ take the dataclass defaults,
+        except ``foreground_model``, which loads as ``plain_log_polynomial``.
+        """
         with np.load(path, allow_pickle=False) as data:
             skies = {k[4:]: data[k] for k in data.files if k.startswith("sky_")}
             freqs = data["freqs_mhz"]

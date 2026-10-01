@@ -1,4 +1,4 @@
-"""Primary packed-alm beam input for limtod_jax drift-scan scoring."""
+"""Primary packed-alm beam input for harmonic drift-scan scoring."""
 
 from __future__ import annotations
 
@@ -10,6 +10,14 @@ import numpy as np
 
 from .protocol import Protocol
 
+# Allowance for quadrature error in an efficiency or sky partition.
+_QUADRATURE_TOLERANCE = 1e-3
+_ROOT_4PI = np.sqrt(4 * np.pi)
+
+
+class BeamEfficiencyError(ValueError):
+    """The beam's radiative efficiency or sky partition is not physical."""
+
 
 @dataclass(frozen=True, eq=False)
 class BeamModes:
@@ -20,7 +28,9 @@ class BeamModes:
     horizon preparation during design search. ``sky_ref_alm`` additionally
     skips the fixed beam-local to celestial rotation. Prepared arrays must
     derive from the same full beam, using half weight on horizon-centred
-    pixels for the physical sky/ground split.
+    pixels for the physical sky/ground split. ``eta_rad`` and
+    ``h_partition`` are the monopoles ``a00 / sqrt(4 pi)`` of ``full_alm``
+    and ``sky_alm``.
     """
 
     freqs_mhz: np.ndarray
@@ -63,12 +73,12 @@ class BeamModes:
                 raise ValueError("sky_alm must match full_alm shape and be finite")
             if eta.shape != f.shape or h.shape != f.shape or np.any(~np.isfinite(eta)) or np.any(~np.isfinite(h)):
                 raise ValueError("eta_rad and h_partition must have one finite value per channel")
-            if np.any(eta <= 0) or np.any(h < 0) or np.any(h > eta + 1e-6):
-                raise ValueError("invalid beam efficiency or sky partition")
-            if self.convention == "accepted_power" and np.any(eta > 1.001):
-                raise ValueError("accepted-power efficiency exceeds unity")
+            if np.any(eta <= 0) or np.any(h < 0) or np.any(h > eta + _QUADRATURE_TOLERANCE):
+                raise BeamEfficiencyError("invalid beam efficiency or sky partition")
+            if self.convention == "accepted_power" and np.any(eta > 1 + _QUADRATURE_TOLERANCE):
+                raise BeamEfficiencyError("accepted-power efficiency exceeds unity")
             if self.convention == "shape_only" and not np.allclose(eta, 1., atol=1e-6):
-                raise ValueError("shape_only prepared modes require unit efficiency")
+                raise BeamEfficiencyError("shape_only prepared modes require unit efficiency")
             object.__setattr__(self, "sky_alm", sky)
             object.__setattr__(self, "eta_rad", eta)
             object.__setattr__(self, "h_partition", h)
@@ -92,6 +102,9 @@ class BeamModes:
         the sky. This matches the physical sky/ground partition and avoids
         an O(1/nside) energy mismatch from a strict horizon cut. The map is
         re-analysed once and the prepared result can be saved to NPZ.
+        The efficiency and sky partition are the monopoles of the full and
+        the horizon-weighted alms. Raises BeamEfficiencyError when they are
+        not physical.
         """
         if not np.isfinite(latitude_deg) or not -90 <= latitude_deg <= 90:
             raise ValueError("invalid reference latitude")
@@ -106,26 +119,22 @@ class BeamModes:
             theta, _ = hp.pix2ang(self.nside, np.arange(hp.nside2npix(self.nside)))
             partition = np.where(theta < np.pi / 2 - 1e-14, 1.,
                                  np.where(theta > np.pi / 2 + 1e-14, 0., 0.5))
-            mask = partition
-            eta = np.empty(len(self.freqs_mhz))
-            h = np.empty_like(eta)
             masked = np.empty_like(self.full_alm)
             for i, alm in enumerate(self.full_alm):
                 physical_map = hp.alm2map(alm, self.nside, lmax=self.lmax)
-                eta[i] = np.mean(physical_map)
-                h[i] = np.mean(physical_map * partition)
-                masked[i] = hp.map2alm(physical_map * mask, lmax=self.lmax, iter=3)
+                masked[i] = hp.map2alm(physical_map * partition, lmax=self.lmax, iter=3)
+            eta = self.full_alm[:, 0].real / _ROOT_4PI
             if self.convention == "shape_only":
                 if np.any(eta <= 0):
-                    raise ValueError("shape-only beam has zero integral")
+                    raise BeamEfficiencyError("shape-only beam has zero integral")
                 masked /= eta[:, None]
                 self_full = self.full_alm / eta[:, None]
-                h /= eta
-                eta[:] = 1.0
+                eta = np.ones_like(eta)
             else:
                 self_full = self.full_alm
-                if np.any(eta <= 0) or np.any(eta > 1.001):
-                    raise ValueError("accepted-power beam efficiency outside (0, 1.001]")
+                if np.any(eta <= 0) or np.any(eta > 1 + _QUADRATURE_TOLERANCE):
+                    raise BeamEfficiencyError("accepted-power beam efficiency outside (0, 1.001]")
+            h = masked[:, 0].real / _ROOT_4PI
         from limTOD.simulator import zyz_of_pointing
         psi, beta, phi = zyz_of_pointing(0.5, latitude_deg, 0., 90., 0.)
         ref = masked.copy()

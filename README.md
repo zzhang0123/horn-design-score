@@ -43,7 +43,8 @@ The beam NPZ needs `freqs_mhz`, `nside`, `lmax`, and `full_alm` with shape
 `(frequency, (lmax+1)(lmax+2)/2)` in healpy packed order. `full_alm` is the
 all-direction **Stokes-I power gain of one port**, in limTOD's beam-local frame
 (pole at zenith, φ=0 south, φ=90° east). Its all-sky mean must give a radiation
-efficiency between 0 and 1. If starting from θ/φ power gains in dBi, convert
+efficiency between 0 and 1; a beam outside that range scores 0 with status
+`invalid_efficiency`. If starting from θ/φ power gains in dBi, convert
 their *linear* gains to Stokes I before calculating alms; the optional
 `beam_modes_from_grid` helper does this for a regular angular grid.
 
@@ -80,12 +81,12 @@ factor: the beam at $\nu$ weighting the sky map of one reference channel,
 divided by the same quantity at the reference channel (the channel nearest
 75 MHz). It removes beam chromaticity for a sky with one spectrum; the part
 coupled to spatial variation of the sky spectrum stays in the residual and
-lowers the score. `HarmonicScorer.beam_factor(beam)` returns $C(\nu)$. The
+lowers the score. `HarmonicScorer.beam_factor(beam)` returns $C(\nu)$ for each sky. The
 optional 21 cm spectrum fit estimates only the supplied template's amplitude
 in a noiseless mock.
 `Protocol(..., foreground_model="matched_beam_factor")` selects the earlier
-$C=d_{0,\mathrm{model}}/\langle T_{\mathrm{model}}\rangle$, which cancels the
-beam and gives the same residual for every candidate.
+$C=d_{0,\mathrm{model}}/\langle T_{\mathrm{model}}\rangle$. That factor cancels
+the beam, so its residual does not respond to beam chromaticity.
 An old protocol NPZ without `foreground_model` keeps the earlier plain fit.
 
 Reuse one protocol and scorer for many beams:

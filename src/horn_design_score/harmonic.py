@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import healpy as hp
 import numpy as np
 
-from .modes import BeamModes
+from .modes import BeamEfficiencyError, BeamModes
 from .protocol import Protocol
 from .score import ScoreResult, _score_spectra, edges_beam_factor
 
@@ -51,8 +51,15 @@ class HarmonicScorer:
             raise ValueError("beam lmax differs from prepared sky lmax")
         return beam.prepare(self.protocol.latitude_deg)
 
-    def _ground_loss(self, b: BeamModes) -> np.ndarray:
-        return ((b.eta_rad - b.h_partition) * self.protocol.ground_k
+    def _throughput(self, b: BeamModes) -> np.ndarray:
+        """Full-LST mean response to a uniform unit sky: the one h of the model."""
+        zonal = np.conj(b.sky_ref_alm[:, :self.lmax + 1])
+        return np.sum(zonal * self.ones_quad[:self.lmax + 1], axis=1).real / hp.nside2npix(b.nside)
+
+    def _ground_loss(self, b: BeamModes, throughput: np.ndarray) -> np.ndarray:
+        # The same throughput weights the sky, so an isothermal sky, ground
+        # and loss give an isothermal d0.
+        return ((b.eta_rad - throughput) * self.protocol.ground_k
                 + (1 - b.eta_rad) * self.protocol.loss_k)
 
     def _reference_d0(self, b: BeamModes) -> dict[str, np.ndarray]:
@@ -75,8 +82,8 @@ class HarmonicScorer:
         starts = hp.Alm.getidx(self.lmax, np.arange(self.lmax + 1), np.arange(self.lmax + 1))
         product = np.conj(beam_ref)[None, :, :] * self.sky_quad
         modes = np.add.reduceat(product, starts, axis=-1) / hp.nside2npix(b.nside)
-        ones_mode = np.sum(np.conj(beam_ref[:, :self.lmax + 1]) * self.ones_quad[:self.lmax + 1], axis=1).real / hp.nside2npix(b.nside)
-        ground_loss = self._ground_loss(b)
+        ones_mode = self._throughput(b)
+        ground_loss = self._ground_loss(b, ones_mode)
         foreground: dict[str, np.ndarray] = {}
         noise: dict[str, np.ndarray] = {}
         for j, name in enumerate(self.names):
@@ -93,12 +100,15 @@ class HarmonicScorer:
 
     def score(self, beam: BeamModes, *, fit_spectrum: bool = False) -> ScoreResult:
         """Return one score; optionally fit the injected global-signal template."""
-        b = self._prepared(beam)
+        try:
+            b = self._prepared(beam)
+        except BeamEfficiencyError as exc:
+            return ScoreResult(0., "invalid_efficiency", str(exc), {}, "per_bin_tsys_mmodes")
         foreground, noise, throughput, eta = self._spectra(b)
         if np.any(throughput <= 0):
             return ScoreResult(0., "invalid_sky_throughput", "masked harmonic beam has nonpositive response", {}, "per_bin_tsys_mmodes")
         return _score_spectra(foreground, throughput, eta, noise,
                               self.protocol, "per_bin_tsys_mmodes",
                               reference_d0=self._reference_d0(b),
-                              additive_k=self._ground_loss(b),
+                              additive_k=self._ground_loss(b, throughput),
                               fit_spectrum=fit_spectrum)

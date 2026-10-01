@@ -173,7 +173,7 @@ def score_beam(beam, protocol: Protocol, kernel=None,
                *, nside: int | None = None, fit_spectrum: bool = False) -> ScoreResult:
     """Score a packed-alm beam, or a legacy angular-grid beam.
 
-    ``BeamModes`` uses limtod_jax m-modes and per-bin thermal noise; reuse a
+    ``BeamModes`` uses the harmonic m-mode scorer and per-bin thermal noise; reuse a
     ``HarmonicScorer`` as ``kernel`` across many candidates. ``BeamPattern``
     retains the earlier angular-grid approximation and takes ``ZonalKernel``.
     """
