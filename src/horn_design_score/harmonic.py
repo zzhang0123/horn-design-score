@@ -14,7 +14,7 @@ import numpy as np
 
 from .modes import BeamModes
 from .protocol import Protocol
-from .score import ScoreResult, _score_spectra
+from .score import ScoreResult, _score_spectra, edges_beam_factor
 
 
 @dataclass(eq=False)
@@ -39,23 +39,44 @@ class HarmonicScorer:
             for name in self.names
         ])  # (scenario, frequency, packed alm)
         self.ones_quad = hp.map2alm(np.ones(npix), lmax=self.lmax, iter=0) * (npix / (4 * np.pi))
+        # Zonal (m=0) harmonics of each sky at the beam-factor reference channel.
+        self.reference_quad = self.sky_quad[:, self.protocol.bcf_reference_index, :self.lmax + 1]
         lst = np.arange(360, dtype=float) + 0.5
         self.phase = np.exp(1j * np.deg2rad(lst[:, None] - lst[0])
                             * np.arange(1, self.lmax + 1)[None, :])
 
-    def forward(self, beam: BeamModes) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray], np.ndarray, np.ndarray]:
-        """Return d0 spectra, per-bin thermal errors, sky throughput and efficiency."""
+    def _prepared(self, beam: BeamModes) -> BeamModes:
         beam.validate_for(self.protocol)
         if beam.lmax != self.lmax:
             raise ValueError("beam lmax differs from prepared sky lmax")
-        b = beam.prepare(self.protocol.latitude_deg)
+        return beam.prepare(self.protocol.latitude_deg)
+
+    def _ground_loss(self, b: BeamModes) -> np.ndarray:
+        return ((b.eta_rad - b.h_partition) * self.protocol.ground_k
+                + (1 - b.eta_rad) * self.protocol.loss_k)
+
+    def _reference_d0(self, b: BeamModes) -> dict[str, np.ndarray]:
+        """Full-LST mean of each channel's beam on the reference-channel sky."""
+        zonal = np.conj(b.sky_ref_alm[:, :self.lmax + 1])
+        d0 = (zonal @ self.reference_quad.T).real / hp.nside2npix(b.nside)
+        return {name: d0[:, j] for j, name in enumerate(self.names)}
+
+    def beam_factor(self, beam: BeamModes) -> dict[str, np.ndarray]:
+        """Return the EDGES beam chromaticity factor C(nu) for each sky."""
+        reference = self._reference_d0(self._prepared(beam))
+        return {name: edges_beam_factor(d0, self.protocol) for name, d0 in reference.items()}
+
+    def forward(self, beam: BeamModes) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray], np.ndarray, np.ndarray]:
+        """Return d0 spectra, per-bin thermal errors, sky throughput and efficiency."""
+        return self._spectra(self._prepared(beam))
+
+    def _spectra(self, b: BeamModes) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray], np.ndarray, np.ndarray]:
         beam_ref = b.sky_ref_alm
         starts = hp.Alm.getidx(self.lmax, np.arange(self.lmax + 1), np.arange(self.lmax + 1))
         product = np.conj(beam_ref)[None, :, :] * self.sky_quad
         modes = np.add.reduceat(product, starts, axis=-1) / hp.nside2npix(b.nside)
         ones_mode = np.sum(np.conj(beam_ref[:, :self.lmax + 1]) * self.ones_quad[:self.lmax + 1], axis=1).real / hp.nside2npix(b.nside)
-        ground_loss = ((b.eta_rad - b.h_partition) * self.protocol.ground_k
-                       + (1 - b.eta_rad) * self.protocol.loss_k)
+        ground_loss = self._ground_loss(b)
         foreground: dict[str, np.ndarray] = {}
         noise: dict[str, np.ndarray] = {}
         for j, name in enumerate(self.names):
@@ -72,9 +93,12 @@ class HarmonicScorer:
 
     def score(self, beam: BeamModes, *, fit_spectrum: bool = False) -> ScoreResult:
         """Return one score; optionally fit the injected global-signal template."""
-        foreground, noise, throughput, eta = self.forward(beam)
+        b = self._prepared(beam)
+        foreground, noise, throughput, eta = self._spectra(b)
         if np.any(throughput <= 0):
             return ScoreResult(0., "invalid_sky_throughput", "masked harmonic beam has nonpositive response", {}, "per_bin_tsys_mmodes")
         return _score_spectra(foreground, throughput, eta, noise,
                               self.protocol, "per_bin_tsys_mmodes",
+                              reference_d0=self._reference_d0(b),
+                              additive_k=self._ground_loss(b),
                               fit_spectrum=fit_spectrum)

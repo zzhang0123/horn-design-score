@@ -20,8 +20,8 @@ def test_default_protocol_fixes_design_setup_and_roundtrips(tmp_path):
     visits = np.full(360, 180.)
 
     protocol = Protocol.default(beam, skies, signal, visits)
-    assert protocol.protocol_id == "jbo-default-v3"
-    assert protocol.foreground_model == "matched_beam_factor"
+    assert protocol.protocol_id == "jbo-default-v4"
+    assert protocol.foreground_model == "edges_beam_factor"
     np.testing.assert_array_equal(protocol.freqs_mhz, beam.freqs_mhz)
     assert set(protocol.sky_maps_k) == set(skies)
     assert protocol.latitude_deg == 53.23625
@@ -37,8 +37,8 @@ def test_default_protocol_fixes_design_setup_and_roundtrips(tmp_path):
 
     custom = Protocol.default(beam, {"other": skies["cnn_pl_gleam"]}, signal, visits)
     assert custom.protocol_id == "custom-v1"
-    with pytest.raises(ValueError, match="jbo-default-v3"):
-        Protocol(freqs, skies, signal, visits, protocol_id="jbo-default-v3",
+    with pytest.raises(ValueError, match="jbo-default-v4"):
+        Protocol(freqs, skies, signal, visits, protocol_id="jbo-default-v4",
                  receiver_k=75.)
     with pytest.raises(ValueError, match="one finite value per channel"):
         Protocol.default(beam, skies, signal[:-1], visits)
@@ -51,7 +51,7 @@ def test_bundled_analytic_inputs_follow_beam_grid_and_are_reproducible(tmp_path)
     first = Protocol.default(beam)
     second = Protocol.default(beam)
 
-    assert first.protocol_id == "analytic-default-v2"
+    assert first.protocol_id == "analytic-default-v3"
     assert first.fingerprint == second.fingerprint
     assert set(first.sky_maps_k) == {"analytic_a", "analytic_b"}
     np.testing.assert_array_equal(first.freqs_mhz, beam.freqs_mhz)
@@ -84,6 +84,27 @@ def test_old_default_protocol_remains_loadable(tmp_path):
     path = tmp_path / "old-default.npz"
     old.save_npz(path)
     assert Protocol.load_npz(path).fingerprint == old.fingerprint
+
+
+def test_matched_presets_keep_their_foreground_model(tmp_path):
+    freqs = np.arange(55., 75.)
+    skies = {
+        "cnn_pl_gleam": np.full((freqs.size, 12), 1500.),
+        "gsm2008_gleam": np.full((freqs.size, 12), 1600.),
+    }
+    args = (freqs, skies, np.zeros(freqs.size), np.full(360, 180.))
+    old = Protocol(*args, protocol_id="jbo-default-v3", foreground_model="matched_beam_factor")
+    path = tmp_path / "matched-default.npz"
+    old.save_npz(path)
+    restored = Protocol.load_npz(path)
+    assert restored.fingerprint == old.fingerprint
+    assert restored.foreground_model == "matched_beam_factor"
+    with pytest.raises(ValueError, match="requires matched_beam_factor"):
+        Protocol(*args, protocol_id="jbo-default-v3")
+    with pytest.raises(ValueError, match="requires edges_beam_factor"):
+        Protocol(*args, protocol_id="jbo-default-v4", foreground_model="matched_beam_factor")
+    with pytest.raises(ValueError, match="foreground_model must be one of"):
+        Protocol(*args, foreground_model="unknown")
 
 
 def test_legacy_npz_without_foreground_model_keeps_plain_fit(tmp_path):

@@ -17,10 +17,22 @@ class _BeamFrequencySource(TypingProtocol):
     freqs_mhz: np.ndarray
 
 
-_DEFAULT_ID = "jbo-default-v3"
+_DEFAULT_ID = "jbo-default-v4"
+_JBO_IDS = ("jbo-default-v1", "jbo-default-v2", "jbo-default-v3", _DEFAULT_ID)
 _DEFAULT_SKIES = frozenset({"cnn_pl_gleam", "gsm2008_gleam"})
-_ANALYTIC_ID = "analytic-default-v2"
+_ANALYTIC_ID = "analytic-default-v3"
+_ANALYTIC_IDS = ("analytic-default-v1", "analytic-default-v2", _ANALYTIC_ID)
 _ANALYTIC_SKIES = frozenset({"analytic_a", "analytic_b"})
+_FOREGROUND_MODELS = ("edges_beam_factor", "matched_beam_factor", "plain_log_polynomial")
+# Each preset keeps the foreground model it was defined with.
+_PRESET_FOREGROUND_MODEL = {
+    "jbo-default-v3": "matched_beam_factor",
+    "analytic-default-v2": "matched_beam_factor",
+    _DEFAULT_ID: "edges_beam_factor",
+    _ANALYTIC_ID: "edges_beam_factor",
+}
+# EDGES low-band reference frequency for the beam chromaticity factor.
+_BCF_REFERENCE_MHZ = 75.0
 _DEFAULT_SETTINGS = {
     "latitude_deg": 53.23625,
     "receiver_k": 100.0,
@@ -46,7 +58,7 @@ class Protocol:
     bandwidth_hz: float = 1e6
     foreground_order: int = 5
     protocol_id: str = "custom-v1"
-    foreground_model: str = "matched_beam_factor"
+    foreground_model: str = "edges_beam_factor"
     _fingerprint: str = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -70,8 +82,8 @@ class Protocol:
             raise ValueError("invalid integration, bandwidth or foreground order")
         if not isinstance(self.protocol_id, str) or not self.protocol_id:
             raise ValueError("protocol_id must be a nonempty string")
-        if self.foreground_model not in ("matched_beam_factor", "plain_log_polynomial"):
-            raise ValueError("foreground_model must be matched_beam_factor or plain_log_polynomial")
+        if self.foreground_model not in _FOREGROUND_MODELS:
+            raise ValueError("foreground_model must be one of " + ", ".join(_FOREGROUND_MODELS))
         if len(self.sky_maps_k) < 1:
             raise ValueError("at least one foreground sky is required")
         maps: dict[str, np.ndarray] = {}
@@ -91,17 +103,15 @@ class Protocol:
             raise ValueError("jbo-band-only-v1 requires 55..120 MHz at 1 MHz spacing")
         if self.protocol_id == "jbo-default-v1" and not np.array_equal(f, np.arange(55., 121.)):
             raise ValueError("jbo-default-v1 requires 55..120 MHz at 1 MHz spacing")
-        if (self.protocol_id in ("jbo-default-v1", "jbo-default-v2", _DEFAULT_ID)
-                and (set(maps) != _DEFAULT_SKIES
+        preset_skies = (_DEFAULT_SKIES if self.protocol_id in _JBO_IDS
+                        else _ANALYTIC_SKIES if self.protocol_id in _ANALYTIC_IDS else None)
+        if (preset_skies is not None
+                and (set(maps) != preset_skies
                      or any(getattr(self, key) != value for key, value in _DEFAULT_SETTINGS.items()))):
             raise ValueError(f"{self.protocol_id} has inconsistent sky labels or observing settings")
-        if (self.protocol_id in ("analytic-default-v1", _ANALYTIC_ID)
-                and (set(maps) != _ANALYTIC_SKIES
-                     or any(getattr(self, key) != value for key, value in _DEFAULT_SETTINGS.items()))):
-            raise ValueError(f"{_ANALYTIC_ID} has inconsistent sky labels or observing settings")
-        if (self.protocol_id in (_DEFAULT_ID, _ANALYTIC_ID)
-                and self.foreground_model != "matched_beam_factor"):
-            raise ValueError(f"{self.protocol_id} requires matched_beam_factor")
+        preset_model = _PRESET_FOREGROUND_MODEL.get(self.protocol_id)
+        if preset_model is not None and self.foreground_model != preset_model:
+            raise ValueError(f"{self.protocol_id} requires {preset_model}")
         object.__setattr__(self, "freqs_mhz", f)
         object.__setattr__(self, "signal_k", signal)
         object.__setattr__(self, "visits", visits)
@@ -127,6 +137,19 @@ class Protocol:
     @property
     def sky_nside(self) -> int:
         return hp.npix2nside(next(iter(self.sky_maps_k.values())).shape[1])
+
+    @property
+    def bcf_reference_index(self) -> int:
+        """Channel whose sky map is the beam-factor template.
+
+        The channel nearest 75 MHz; the lower one on a tie, and a band edge
+        when the grid does not contain 75 MHz.
+        """
+        return int(np.argmin(np.abs(self.freqs_mhz - _BCF_REFERENCE_MHZ)))
+
+    @property
+    def bcf_reference_mhz(self) -> float:
+        return float(self.freqs_mhz[self.bcf_reference_index])
 
     @classmethod
     def default(cls, beam: _BeamFrequencySource,

@@ -8,7 +8,7 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from .beam import BeamPattern
-from .kernel import ZonalKernel, foreground_fast
+from .kernel import ZonalKernel, foreground_fast, ground_loss_fast, reference_d0_fast
 from .protocol import Protocol
 
 
@@ -42,9 +42,54 @@ class FittedSpectrum:
     data_kind: str = "noiseless_A1_injection"
 
 
+def edges_beam_factor(reference_d0: np.ndarray, protocol: Protocol) -> np.ndarray:
+    """EDGES beam chromaticity factor from the beam-weighted reference sky.
+
+    ``reference_d0[i]`` is the full-LST mean of the beam at channel ``i``
+    weighting the sky map of the reference channel. The factor is its ratio
+    to the reference channel, so it equals one there.
+    """
+    return reference_d0 / reference_d0[protocol.bcf_reference_index]
+
+
+def _foreground_terms(protocol: Protocol, name: str, fg: np.ndarray,
+                      reference_d0: dict[str, np.ndarray] | None,
+                      additive_k: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
+    """Return the fixed factor C(nu) and additive term of the foreground model.
+
+    The fitted foreground is ``offset + factor * exp(log-polynomial)``.
+    Raises ValueError when the smooth part is not positive.
+    """
+    offset = np.zeros_like(fg)
+    if protocol.foreground_model == "edges_beam_factor":
+        if reference_d0 is None or additive_k is None:
+            raise TypeError("edges_beam_factor needs reference_d0 and additive_k")
+        reference = reference_d0[name]
+        if np.any(reference <= 0) or not np.all(np.isfinite(reference)):
+            raise ValueError("beam-weighted reference sky is not positive")
+        factor = edges_beam_factor(reference, protocol)
+        # Ground pickup and loss follow from the beam model alone, so they
+        # are removed before the factor is applied, as EDGES corrects losses.
+        offset = np.asarray(additive_k, dtype=float)
+    elif protocol.foreground_model == "matched_beam_factor":
+        # limTOD's matched C(nu) = d0_model / <T_model>. The protocol sky is
+        # both the mock truth and the model sky, so C cancels the beam.
+        monopole = protocol.sky_maps_k[name].mean(axis=1)
+        if np.any(monopole <= 0):
+            raise ValueError("sky monopole is not positive")
+        factor = fg / monopole
+    else:
+        factor = np.ones_like(fg)
+    if np.any(fg - offset <= 0):
+        raise ValueError("foreground minus ground and loss is not positive")
+    return factor, offset
+
+
 def _score_spectra(foreground: dict[str, np.ndarray], h: np.ndarray, eta: np.ndarray,
                    noise: dict[str, np.ndarray], protocol: Protocol, noise_method: str,
-                   *, fit_spectrum: bool = False) -> ScoreResult:
+                   *, reference_d0: dict[str, np.ndarray] | None = None,
+                   additive_k: np.ndarray | None = None,
+                   fit_spectrum: bool = False) -> ScoreResult:
     f = protocol.freqs_mhz
     x = np.log(f / 70.0)
     v = np.vander(x, protocol.foreground_order + 1, increasing=True)
@@ -55,23 +100,20 @@ def _score_spectra(foreground: dict[str, np.ndarray], h: np.ndarray, eta: np.nda
         sigma = noise[name]
         if np.any(sigma <= 0) or not np.all(np.isfinite(sigma)) or np.any(fg <= 0):
             return ScoreResult(0., "invalid_forward_model", name, {}, noise_method)
-        if protocol.foreground_model == "matched_beam_factor":
-            # limTOD's matched C(nu) = d0_model / <T_model>. The protocol sky is
-            # both the mock truth and the model sky in this idealized benchmark.
-            monopole = protocol.sky_maps_k[name].mean(axis=1)
-            if np.any(monopole <= 0):
-                return ScoreResult(0., "invalid_foreground_model", name, {}, noise_method)
-            factor = fg / monopole
-        else:
-            factor = np.ones_like(fg)
+        try:
+            factor, offset = _foreground_terms(protocol, name, fg, reference_d0, additive_k)
+        except ValueError as exc:
+            return ScoreResult(0., "invalid_foreground_model", f"{name}: {exc}", {}, noise_method)
+        smooth_data = fg - offset
         # Fit foreground only, before adding the 21 cm signal. A nonlinear fit
         # is needed: a log-space polynomial fit is not a Kelvin-space fit.
         try:
-            a0 = np.polynomial.polynomial.polyfit(x, np.log(fg / factor), protocol.foreground_order)
+            a0 = np.polynomial.polynomial.polyfit(x, np.log(smooth_data / factor),
+                                                  protocol.foreground_order)
             def model(a: np.ndarray) -> np.ndarray:
                 with np.errstate(over="raise", invalid="raise"):
                     return factor * np.exp(v @ a)
-            opt = least_squares(lambda a: (fg - model(a)) / sigma, a0,
+            opt = least_squares(lambda a: (smooth_data - model(a)) / sigma, a0,
                                 jac=lambda a: -(model(a)[:, None] * v) / sigma[:, None],
                                 max_nfev=500, xtol=1e-12, ftol=1e-12, gtol=1e-12)
         except (FloatingPointError, ValueError, OverflowError) as exc:
@@ -85,7 +127,7 @@ def _score_spectra(foreground: dict[str, np.ndarray], h: np.ndarray, eta: np.nda
             return ScoreResult(0., "foreground_rank_deficient", name, {}, noise_method)
         u = template / sigma
         u -= q @ (q.T @ u)
-        residual = (fg - fitted) / sigma
+        residual = (smooth_data - fitted) / sigma
         residual -= q @ (q.T @ residual)
         information = float(u @ u)
         if information <= 1e-24 or not np.isfinite(information):
@@ -102,7 +144,7 @@ def _score_spectra(foreground: dict[str, np.ndarray], h: np.ndarray, eta: np.nda
             # Fit a noiseless mock with the protocol's A=1 signal injected.
             # This is intentionally separate from the foreground-only fit
             # that defines the FOM, so requesting spectra cannot change it.
-            data = fg + template
+            data = smooth_data + template
             def joint_residual(params: np.ndarray) -> np.ndarray:
                 return (data - model(params[:-1]) - params[-1] * template) / sigma
             def joint_jac(params: np.ndarray) -> np.ndarray:
@@ -159,4 +201,6 @@ def score_beam(beam, protocol: Protocol, kernel=None,
         360.0 * np.sqrt(protocol.bandwidth_hz * protocol.integration_s))
     noise = {name: (spectrum + protocol.receiver_k) * noise_scale for name, spectrum in fg.items()}
     return _score_spectra(fg, h, eta, noise, protocol, "lst_mean_tsys",
+                          reference_d0=reference_d0_fast(gain, kernel, protocol),
+                          additive_k=ground_loss_fast(gain, kernel, protocol),
                           fit_spectrum=fit_spectrum)

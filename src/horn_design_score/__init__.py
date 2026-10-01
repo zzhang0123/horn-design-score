@@ -6,11 +6,11 @@ from .protocol import Protocol
 from .defaults import default_foreground_scenarios, default_signal_k
 from .kernel import ZonalKernel
 from .harmonic import HarmonicScorer
-from .score import FittedSpectrum, ScoreResult, score_beam
+from .score import FittedSpectrum, ScoreResult, edges_beam_factor, score_beam
 from .reference import reference_score, reference_forward, reference_modes_forward, reference_modes_score
 
 __all__ = ["BeamPattern", "BeamModes", "beam_modes_from_grid", "Protocol",
            "default_foreground_scenarios", "default_signal_k", "ZonalKernel",
-           "HarmonicScorer", "FittedSpectrum", "ScoreResult", "score_beam", "reference_score", "reference_forward",
+           "HarmonicScorer", "FittedSpectrum", "ScoreResult", "edges_beam_factor", "score_beam", "reference_score", "reference_forward",
            "reference_modes_forward", "reference_modes_score"]
-__version__ = "0.5.0"
+__version__ = "0.6.0"

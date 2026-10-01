@@ -97,8 +97,20 @@ def foreground_fast(gain: np.ndarray, kernel: ZonalKernel, protocol: Protocol) -
     eta = gain.mean(axis=1)
     sky_fraction = kernel.sky_fraction
     h = np.mean(gain * sky_fraction[None, :], axis=1)
-    ground = np.mean(gain * (1 - sky_fraction)[None, :], axis=1) * protocol.ground_k
-    loss = (1.0 - eta) * protocol.loss_k
-    foreground = {name: np.mean(gain * sky * sky_fraction[None, :], axis=1) + ground + loss
+    ground_loss = ground_loss_fast(gain, kernel, protocol)
+    foreground = {name: np.mean(gain * sky * sky_fraction[None, :], axis=1) + ground_loss
                   for name, sky in kernel.mean_sky_k.items()}
     return foreground, h, eta
+
+
+def ground_loss_fast(gain: np.ndarray, kernel: ZonalKernel, protocol: Protocol) -> np.ndarray:
+    """Return the ground-pickup plus loss temperature per channel."""
+    ground = np.mean(gain * (1 - kernel.sky_fraction)[None, :], axis=1) * protocol.ground_k
+    return ground + (1.0 - gain.mean(axis=1)) * protocol.loss_k
+
+
+def reference_d0_fast(gain: np.ndarray, kernel: ZonalKernel, protocol: Protocol) -> dict[str, np.ndarray]:
+    """Return each channel's beam weighting the reference-channel sky map."""
+    j = protocol.bcf_reference_index
+    return {name: np.mean(gain * (sky[j] * kernel.sky_fraction)[None, :], axis=1)
+            for name, sky in kernel.mean_sky_k.items()}
